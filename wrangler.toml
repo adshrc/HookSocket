@@ -1,0 +1,11 @@
+name = "HookSecret"
+main = "worker.js"
+compatibility_date = "2024-04-25"
+
+durable_objects.bindings = [
+  { name = "WSROOM", class_name = "WebSocketRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WebSocketRoom"]
