@@ -6,21 +6,19 @@
  *   - wss://your-domain/websocket-test/:id  → forwards to https://your-domain/webhook-test/:id
  *
  * Clients can:
- *   - Send messages through a WebSocket → forwarded to a corresponding HTTP endpoint
+ *   - Send messages through the WebSocket → forwarded to the corresponding n8n webhook
  *   - Receive messages via HTTP POST → broadcast to all clients in the matching WebSocket room
  *
- * HookSocket supports webhook forwarding, push notifications, real-time APIs, and more.
  * All room connections are isolated by `:id`, and CORS is enabled.
  *
  * Environment Variables:
  * (All environment variables are optional — defaults are used if not provided)
  * - WS_PATH:         WebSocket path prefix for production (default: '/websocket/')
  * - WS_PATH_TEST:    WebSocket path prefix for test (default: '/websocket-test/')
- * - API_PATH:        HTTP path to forward production messages to (default: '/webhook/')
- * - API_PATH_TEST:   HTTP path to forward test messages to (default: '/webhook-test/')
- * - API_HOST:        Hostname override for HTTP forwarding (default: request host)
- */
-
+ * - API_PATH:        API path to forward production WebSocket messages to (default: '/webhook/')
+ * - API_PATH_TEST:   API path to forward test WebSocket messages to (default: '/webhook-test/')
+ * - API_HOST:        (optional) Hostname override for webhook forwarding (default: request host)
+  */
 const DEFAULT_WS_PATH = '/websocket/';
 const DEFAULT_WS_PATH_TEST = '/websocket-test/';
 const DEFAULT_API_PATH = '/webhook/';
@@ -33,7 +31,7 @@ const CORS_HEADERS = {
 };
 
 /**
- * Durable Object class to manage WebSocket rooms for HookSocket
+ * Durable Object class to manage WebSocket rooms
  */
 export class WebSocketRoom {
   constructor(state, env) {
@@ -62,7 +60,10 @@ export class WebSocketRoom {
       server.accept();
       this.connections.set(socketId, server);
 
-      // When a message is received from a WebSocket client, forward it to the HTTP endpoint
+      // Start sending periodic pings to keep the connection alive
+      this.startPing(server, socketId);
+
+      // When a message is received from a WebSocket client
       server.addEventListener('message', ({ data }) => {
         const apiHost = this.env.API_HOST || url.host;
         const apiPath = this.translatePath(path);
@@ -103,7 +104,7 @@ export class WebSocketRoom {
     const isJson = contentType.includes('application/json');
     const parsedRes = await (isJson ? obj.json() : obj.text());
 
-    // Skip default n8n "Workflow was started" response if needed
+    // Skip default n8n "Workflow was started" response
     if (parsedRes?.message === 'Workflow was started') return;
 
     const message = isJson ? JSON.stringify(parsedRes) : parsedRes;
@@ -123,9 +124,28 @@ export class WebSocketRoom {
   }
 
   /**
-   * Translates the WebSocket path to the corresponding HTTP forwarding path.
+   * Starts sending periodic ping messages to keep the WebSocket connection alive.
+   * Cleans up the connection if sending a ping fails.
+   * @param {WebSocket} socket - The WebSocket connection
+   * @param {string} socketId - The unique ID associated with the WebSocket
+   */
+  startPing(socket, socketId) {
+    const interval = setInterval(() => {
+      try {
+        socket.send('ping');
+      } catch {
+        clearInterval(interval);
+        this.connections.delete(socketId);
+      }
+    }, 30000); // Send a ping every 30 seconds
+
+    socket.addEventListener('close', () => clearInterval(interval));
+  }
+
+  /**
+   * Translates the WebSocket path to the corresponding webhook path.
    * @param {string} path - Incoming request path
-   * @returns {string} Translated path for HTTP forwarding
+   * @returns {string} Translated path for webhook forwarding
    */
   translatePath(path) {
     const {
