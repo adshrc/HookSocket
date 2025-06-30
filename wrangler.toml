@@ -1,6 +1,6 @@
-name = "HookSecret"
+name = "HookSocket"
 main = "worker.js"
-compatibility_date = "2024-04-25"
+compatibility_date = "2025-06-28"
 
 durable_objects.bindings = [
   { name = "WSROOM", class_name = "WebSocketRoom" }

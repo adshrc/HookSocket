@@ -15,173 +15,166 @@
  * (All environment variables are optional — defaults are used if not provided)
  * - WS_PATH:         WebSocket path prefix for production (default: '/websocket/')
  * - WS_PATH_TEST:    WebSocket path prefix for test (default: '/websocket-test/')
- * - API_PATH:        API path to forward production WebSocket messages to (default: '/webhook/')
- * - API_PATH_TEST:   API path to forward test WebSocket messages to (default: '/webhook-test/')
- * - API_HOST:        (optional) Hostname override for webhook forwarding (default: request host)
-  */
-const DEFAULT_WS_PATH = '/websocket/';
-const DEFAULT_WS_PATH_TEST = '/websocket-test/';
-const DEFAULT_API_PATH = '/webhook/';
-const DEFAULT_API_PATH_TEST = '/webhook-test/';
+ * - WH_PATH:        API path to forward production WebSocket messages to (default: '/webhook/')
+ * - WH_PATH_TEST:   API path to forward test WebSocket messages to (default: '/webhook-test/')
+ * - WH_HOST:        (optional) Hostname override for webhook forwarding (default: request host)
+ */
+const DEFAULT_WS_PATH = 'websocket/';
+const DEFAULT_WH_PATH = 'webhook/';
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Max-Age': '86400',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
 };
 
 /**
  * Durable Object class to manage WebSocket rooms
  */
 export class WebSocketRoom {
-  constructor(state, env) {
-    this.state = state;
-    this.env = env;
-    this.connections = new Map(); // socketId -> WebSocket instance
-  }
-
-  /**
-   * Handle incoming fetch requests (WebSocket upgrade, POST broadcast, or OPTIONS preflight)
-   */
-  async fetch(request) {
-    const url = new URL(request.url);
-    const path = url.pathname;
-
-    if (request.method === 'OPTIONS') {
-      // Handle CORS preflight requests
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    constructor(state, env) {
+        this.state = state;
+        this.env = env;
+        this.connections = new Map(); // socketId -> WebSocket instance
     }
 
-    if (request.headers.get('Upgrade') === 'websocket') {
-      // Upgrade connection to WebSocket
-      const [client, server] = Object.values(new WebSocketPair());
-      const socketId = crypto.randomUUID();
+    /**
+     * Handle incoming fetch requests (WebSocket upgrade, POST broadcast, or OPTIONS preflight)
+     */
+    async fetch(request) {
+        const url = new URL(request.url);
+        const path = url.pathname;
 
-      server.accept();
-      this.connections.set(socketId, server);
+        if (request.method === 'OPTIONS') {
+            // Handle CORS preflight requests
+            return new Response(null, {status: 204, headers: CORS_HEADERS});
+        }
 
-      // Start sending periodic pings to keep the connection alive
-      this.startPing(server, socketId);
+        if (request.headers.get('Upgrade') === 'websocket') {
+            // Upgrade connection to WebSocket
+            const [client, server] = Object.values(new WebSocketPair());
+            const socketId = crypto.randomUUID();
 
-      // When a message is received from a WebSocket client
-      server.addEventListener('message', ({ data }) => {
-        const apiHost = this.env.API_HOST || url.host;
-        const apiPath = this.translatePath(path);
+            server.accept();
+            this.connections.set(socketId, server);
 
-        fetch(`https://${apiHost}${apiPath}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        })
-          .then((res) => this.handleResponse(res))
-          .catch((err) => console.error('Error forwarding message:', err));
-      });
+            // Start sending periodic pings to keep the connection alive
+            this.startPing(server, socketId);
 
-      server.addEventListener('close', () => {
-        // Cleanup when client disconnects
-        this.connections.delete(socketId);
-      });
+            // When a message is received from a WebSocket client
+            server.addEventListener('message', ({data}) => {
+                const apiHost = this.env.WH_HOST || url.host;
+                const apiPath = this.translatePath(path);
 
-      return new Response(null, { status: 101, webSocket: client });
+                fetch(`https://${apiHost}${apiPath}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data),
+                })
+                    .then((res) => this.handleResponse(res))
+                    .catch((err) => console.error('Error forwarding message:', err));
+            });
+
+            server.addEventListener('close', () => {
+                // Cleanup when client disconnects
+                this.connections.delete(socketId);
+            });
+
+            return new Response(null, {status: 101, webSocket: client});
+        }
+
+        if (request.method === 'POST') {
+            // Send a message to all connected WebSocket clients
+            await this.handleResponse(request);
+            return new Response(null, {status: 200, headers: CORS_HEADERS});
+        }
+
+        return new Response('Method Not Allowed', {status: 405, headers: CORS_HEADERS});
     }
 
-    if (request.method === 'POST') {
-      // Broadcast a message to all connected WebSocket clients in this room
-      await this.handleResponse(request);
-      return new Response(null, { status: 200, headers: CORS_HEADERS });
+    /**
+     * Forwards the incoming Webhook payload to all connected WebSocket clients.
+     * Cleans up dead WebSocket connections.
+     * @param {Response|Request} obj - The incoming response or request object
+     */
+    async handleResponse(obj) {
+        const contentType = obj.headers?.get?.('content-type') || '';
+        const isJson = contentType.includes('application/json');
+        const parsedRes = await (isJson ? obj.json() : obj.text());
+
+        // Skip default n8n "Workflow was started" response
+        if (parsedRes?.message === 'Workflow was started') return;
+
+        const message = isJson ? JSON.stringify(parsedRes) : parsedRes;
+
+        // Send the message to all connections
+        const deadConnections = [];
+        for (const [socketId, socket] of this.connections.entries()) {
+            try {
+                socket.send(message);
+            } catch {
+                deadConnections.push(socketId); // Collect sockets that failed
+            }
+        }
+
+        // Clean up dead sockets
+        deadConnections.forEach(id => this.connections.delete(id));
     }
 
-    return new Response('Method Not Allowed', { status: 405, headers: CORS_HEADERS });
-  }
+    /**
+     * Starts sending periodic ping messages to keep the WebSocket connection alive.
+     * Cleans up the connection if sending a ping fails.
+     * @param {WebSocket} socket - The WebSocket connection
+     * @param {string} socketId - The unique ID associated with the WebSocket
+     */
+    startPing(socket, socketId) {
+        const interval = setInterval(() => {
+            try {
+                socket.send('ping');
+            } catch {
+                clearInterval(interval);
+                this.connections.delete(socketId);
+            }
+        }, 30000); // Send a ping every 30 seconds
 
-  /**
-   * Handles responses from webhook or HTTP POST by broadcasting to all connected clients.
-   * Cleans up dead WebSocket connections.
-   * @param {Response|Request} obj - The incoming response or request object
-   */
-  async handleResponse(obj) {
-    const contentType = obj.headers?.get?.('content-type') || '';
-    const isJson = contentType.includes('application/json');
-    const parsedRes = await (isJson ? obj.json() : obj.text());
-
-    // Skip default n8n "Workflow was started" response
-    if (parsedRes?.message === 'Workflow was started') return;
-
-    const message = isJson ? JSON.stringify(parsedRes) : parsedRes;
-
-    // Broadcast the message to all connections
-    const deadConnections = [];
-    for (const [socketId, socket] of this.connections.entries()) {
-      try {
-        socket.send(message);
-      } catch {
-        deadConnections.push(socketId); // Collect sockets that failed
-      }
+        socket.addEventListener('close', () => clearInterval(interval));
     }
 
-    // Clean up dead sockets
-    deadConnections.forEach(id => this.connections.delete(id));
-  }
+    /**
+     * Translates the WebSocket path to the corresponding Webhook path.
+     * @param {string} path - Incoming request path
+     * @returns {string} Translated path for webhook forwarding
+     */
+    translatePath(path) {
+        const {
+            WS_PATH = DEFAULT_WS_PATH,
+            WH_PATH = DEFAULT_WH_PATH,
+        } = this.env;
 
-  /**
-   * Starts sending periodic ping messages to keep the WebSocket connection alive.
-   * Cleans up the connection if sending a ping fails.
-   * @param {WebSocket} socket - The WebSocket connection
-   * @param {string} socketId - The unique ID associated with the WebSocket
-   */
-  startPing(socket, socketId) {
-    const interval = setInterval(() => {
-      try {
-        socket.send('ping');
-      } catch {
-        clearInterval(interval);
-        this.connections.delete(socketId);
-      }
-    }, 30000); // Send a ping every 30 seconds
+        if (path.startsWith(WS_PATH)) {
+            return path.replace(WS_PATH, WH_PATH);
+        }
 
-    socket.addEventListener('close', () => clearInterval(interval));
-  }
-
-  /**
-   * Translates the WebSocket path to the corresponding webhook path.
-   * @param {string} path - Incoming request path
-   * @returns {string} Translated path for webhook forwarding
-   */
-  translatePath(path) {
-    const {
-      WS_PATH = DEFAULT_WS_PATH,
-      WS_PATH_TEST = DEFAULT_WS_PATH_TEST,
-      API_PATH = DEFAULT_API_PATH,
-      API_PATH_TEST = DEFAULT_API_PATH_TEST,
-    } = this.env;
-
-    if (path.startsWith(WS_PATH_TEST)) {
-      return path.replace(WS_PATH_TEST, API_PATH_TEST);
-    } else if (path.startsWith(WS_PATH)) {
-      return path.replace(WS_PATH, API_PATH);
+        throw new Error(`Cannot translate path '${path}'`);
     }
-
-    throw new Error(`Cannot translate path '${path}'`);
-  }
 }
 
 /**
  * Cloudflare Worker entrypoint that routes requests to the appropriate WebSocketRoom instance
  */
 export default {
-  async fetch(request, env) {
-    const path = new URL(request.url).pathname;
-    const {
-      WS_PATH = DEFAULT_WS_PATH,
-      WS_PATH_TEST = DEFAULT_WS_PATH_TEST,
-    } = env;
+    async fetch(request, env) {
+        const path = new URL(request.url).pathname;
+        const {
+            WS_PATH = DEFAULT_WS_PATH
+        } = env;
 
-    if (!path.startsWith(WS_PATH) && !path.startsWith(WS_PATH_TEST)) {
-      return new Response('Invalid WebSocket path', { status: 404 });
-    }
+        if (WS_PATH && !path.startsWith(WS_PATH)) {
+            return new Response('Invalid WebSocket path', {status: 404});
+        }
 
-    const objId = env.WSROOM.idFromName(path);
-    const obj = env.WSROOM.get(objId);
-    return obj.fetch(request);
-  },
+        const objId = env.WSROOM.idFromName(path);
+        const obj = env.WSROOM.get(objId);
+        return obj.fetch(request);
+    },
 };
