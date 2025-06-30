@@ -1,6 +1,6 @@
 # HookSocket
 
-[![Deploy to Cloudflare Workers](https://developers.cloudflare.com/assets/deploy-button.svg)](https://deploy.cloudflare.com/?url=https://github.com/adshrc/HookSocket)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/adshrc/HookSocket)
 
 > **HookSocket** — A serverless WebSocket-to-HTTP bridge for real-time automations, chatbots, IoT, and more. Powered by Cloudflare Workers.
 
@@ -63,50 +63,14 @@ Your Workflow/Server
 
 You can configure HookSocket to fit your needs. All variables are optional (defaults apply).
 
-| Variable         | Default               | Description                                |
-|------------------|------------------------|--------------------------------------------|
-| `WS_PATH`        | `/websocket/`          | WebSocket path prefix                      |
-| `API_PATH`       | `/webhook/`            | Webhook path prefix                        |
-| `API_HOST`       | _(request hostname)_   | Optional override of the target HTTP host  |
-
----
-
-## 🤖 Supported Platforms
-
-HookSocket makes real-time possible in tools that only support HTTP:
-
-- [n8n](https://n8n.io/)
-- [Zapier](https://zapier.com/)
-- [Make.com](https://make.com/)
-- Any HTTP webhook endpoint
-
----
-
-## 🔧 Example Use Case
-
-A chatbot web app connects to `wss://your-domain/websocket/chat-123`.
-
-- User sends: `"Hello!"` → WebSocket → HookSocket → n8n webhook
-- n8n responds with `"Hi there!"` → POST → HookSocket → all clients in chat-123 room receive it
-
-✅ Real-time  
-✅ Serverless  
-✅ Bi-directional automation bridge
-
----
-
-## 🛡 Limitations
-
-- Idle connections are kept alive with pings every 30 seconds.
-- Cloudflare’s limits still apply (1000 connections per DO, ~60s idle timeout).
+| Variable  | Default               | Description                                |
+|-----------|------------------------|--------------------------------------------|
+| `WS_PATH` | `/websocket/`          | WebSocket path prefix                      |
+| `WH_PATH` | `/webhook/`            | Webhook path prefix                        |
+| `WH_HOST` | _(request hostname)_   | Optional override of the target HTTP host  |
 
 ---
 
 ## 📜 License
 
 MIT License — free to use and modify.
-
----
-
-> Built with ❤️ on Cloudflare Workers  
-> by [@yourname](https://github.com/yourusername)
