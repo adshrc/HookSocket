@@ -2,25 +2,22 @@
  * HookSocket - Serverless WebSocket-to-HTTP Proxy
  *
  * This Cloudflare Worker + Durable Object setup allows clients to connect via WebSocket to:
- *   - wss://your-domain/websocket/:id       → forwards to https://your-domain/webhook/:id
- *   - wss://your-domain/websocket-test/:id  → forwards to https://your-domain/webhook-test/:id
+ *   - wss://your-worker/websocket/<roomId>       → forwards to https://your-worker/webhook/<roomId>
  *
  * Clients can:
  *   - Send messages through the WebSocket → forwarded to the corresponding n8n webhook
  *   - Receive messages via HTTP POST → broadcast to all clients in the matching WebSocket room
  *
- * All room connections are isolated by `:id`, and CORS is enabled.
+ * All room connections are isolated by `<roomId>`, and CORS is enabled.
  *
  * Environment Variables:
  * (All environment variables are optional — defaults are used if not provided)
- * - WS_PATH:         WebSocket path prefix for production (default: '/websocket/')
- * - WS_PATH_TEST:    WebSocket path prefix for test (default: '/websocket-test/')
- * - WH_PATH:        API path to forward production WebSocket messages to (default: '/webhook/')
- * - WH_PATH_TEST:   API path to forward test WebSocket messages to (default: '/webhook-test/')
+ * - WS_PATH:        WebSocket path prefix for production (default: '/websocket')
+ * - WH_PATH:        API path to forward production WebSocket messages to (default: '/webhook')
  * - WH_HOST:        (optional) Hostname override for webhook forwarding (default: request host)
  */
-const DEFAULT_WS_PATH = 'websocket/';
-const DEFAULT_WH_PATH = 'webhook/';
+const DEFAULT_WS_PATH = '/websocket';
+const DEFAULT_WH_PATH = '/webhook';
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
@@ -118,7 +115,7 @@ export class WebSocketRoom {
         }
 
         // Clean up dead sockets
-        deadConnections.forEach(id => this.connections.delete(id));
+        deadConnections.forEach((id) => this.connections.delete(id));
     }
 
     /**
@@ -151,8 +148,8 @@ export class WebSocketRoom {
             WH_PATH = DEFAULT_WH_PATH,
         } = this.env;
 
-        if (path.startsWith(WS_PATH)) {
-            return path.replace(WS_PATH, WH_PATH);
+        if (path.startsWith(WH_PATH)) {
+            return path.replace(WH_PATH, WS_PATH);
         }
 
         throw new Error(`Cannot translate path '${path}'`);
