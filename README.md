@@ -4,8 +4,6 @@
 
 > **HookSocket** — A serverless WebSocket-to-HTTP bridge for real-time automations, chatbots, IoT, and more. Powered by Cloudflare Workers.
 
----
-
 ## ✨ What is HookSocket?
 
 **HookSocket** is a lightweight, serverless WebSocket bridge that forwards WebSocket messages to HTTP endpoints (like webhooks) — and vice versa.
@@ -15,8 +13,6 @@
 - Real-time 2-way communication with **dynamic WebSocket rooms**, isolated by `<roomId>`.
 
 Perfect for building chatbot frontends, real-time dashboards, alerts, and more — using webhook-based backends.
-
----
 
 ## 🚀 How It Works
 
@@ -40,8 +36,6 @@ The WebSocket Client sends a message → HookSocket forwards it to a Webhook URL
 
 > ⚠️ Note that the Payload will be forwarded as is, no modifications will be made.
 
----
-
 ### 2. Your Workflow/Server ➡️ WebSocket
 
 Your Workflow/Server sends an HTTP POST → HookSocket forwards it to the WebSocket client(s).
@@ -57,7 +51,6 @@ Your Workflow/Server
         ↓
  WebSocket Client
 ```
----
 
 ## 🧑🏽‍💻 Example
 1. Deploy HookSocket:
@@ -73,8 +66,6 @@ Your Workflow/Server
 
 > ⚠️ You can have unlimited rooms, the `roomId` in this case is `test`
 
----
-
 ## ⚙️ Environment Variables
 
 You can configure HookSocket to fit your needs. All variables are optional (defaults apply).
@@ -87,8 +78,6 @@ You can configure HookSocket to fit your needs. All variables are optional (defa
 
 > ⚠️ Adjust your CF Workers environment variables in the Settings
 
----
-
 ## Bonus: Make it look like a n8n Endpoint
 
 If you have a self-hosted n8n instance, and you use Cloudflare anyway, you can create a new route, so it looks like a n8n Endpoint:
@@ -97,8 +86,6 @@ If you have a self-hosted n8n instance, and you use Cloudflare anyway, you can c
 2. Add a new route `https://your-n8n-domain.com/websocket/*`
 
 Now your Clients can connect to `wss://your-n8n-domain.com/websocket/<roomId>` and your n8n workflow can send requests to `https://your-n8n-domain.com/websocket/<roomId>` 🥳
-
----
 
 ## 📜 License
 
