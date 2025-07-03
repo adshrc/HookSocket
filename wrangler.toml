@@ -1,7 +1,0 @@
-name = "hooksocket"
-main = "worker.js"
-compatibility_date = "2025-06-28"
-
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["WebSocketRoom"]
