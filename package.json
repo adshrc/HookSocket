@@ -4,7 +4,6 @@
   "description": "A serverless WebSocket-to-HTTP bridge for real-time automations, chatbots, IoT, and more. Powered by Cloudflare Workers.",
   "main": "worker.js",
   "scripts": {
-    "deploy": "wrangler deploy",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
